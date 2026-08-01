@@ -1,0 +1,219 @@
+// ==========================================================
+// Personal Expense Analysis and Budget Management System
+// Prisma Schema (MySQL)
+// ==========================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ----------------------------------------------------------
+// USER
+// ----------------------------------------------------------
+model User {
+  id                Int       @id @default(autoincrement())
+  name              String    @db.VarChar(120)
+  email             String    @unique @db.VarChar(191)
+  password          String    // bcrypt hash
+  avatarUrl         String?
+  currency          String    @default("NGN") @db.VarChar(10)
+  language          String    @default("en") @db.VarChar(10)
+  darkMode          Boolean   @default(false)
+  resetToken        String?
+  resetTokenExpiry  DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  expenses      Expense[]
+  incomes       Income[]
+  budgets       Budget[]
+  categories    Category[]
+  notifications Notification[]
+  settings      Settings?
+
+  @@index([email])
+}
+
+// ----------------------------------------------------------
+// CATEGORY (default + user-created custom categories)
+// ----------------------------------------------------------
+model Category {
+  id        Int      @id @default(autoincrement())
+  name      String   @db.VarChar(80)
+  icon      String?  @db.VarChar(50)
+  color     String?  @db.VarChar(20)
+  type      CategoryType @default(EXPENSE)
+  isDefault Boolean  @default(false)
+  userId    Int?     // null for global default categories
+  createdAt DateTime @default(now())
+
+  user     User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expenses Expense[]
+  budgets  Budget[]
+
+  @@index([userId])
+  @@unique([userId, name])
+}
+
+enum CategoryType {
+  EXPENSE
+  INCOME
+}
+
+// ----------------------------------------------------------
+// EXPENSE
+// ----------------------------------------------------------
+model Expense {
+  id            Int      @id @default(autoincrement())
+  userId        Int
+  categoryId    Int
+  title         String   @db.VarChar(150)
+  description   String?  @db.Text
+  amount        Decimal  @db.Decimal(12, 2)
+  date          DateTime
+  paymentMethod PaymentMethod @default(CASH)
+  merchantName  String?  @db.VarChar(150)
+  receiptImage  String?
+  notes         String?  @db.Text
+  location      String?  @db.VarChar(200)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category Category @relation(fields: [categoryId], references: [id])
+
+  @@index([userId, date])
+  @@index([categoryId])
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  BANK_TRANSFER
+  UPI
+  WALLET
+  OTHER
+}
+
+// ----------------------------------------------------------
+// INCOME
+// ----------------------------------------------------------
+model Income {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  source    String   @db.VarChar(150)
+  amount    Decimal  @db.Decimal(12, 2)
+  date      DateTime
+  notes     String?  @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, date])
+}
+
+// ----------------------------------------------------------
+// BUDGET
+// ----------------------------------------------------------
+model Budget {
+  id         Int          @id @default(autoincrement())
+  userId     Int
+  categoryId Int?         // null = overall budget
+  amount     Decimal      @db.Decimal(12, 2)
+  period     BudgetPeriod @default(MONTHLY)
+  startDate  DateTime
+  endDate    DateTime
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category Category? @relation(fields: [categoryId], references: [id])
+
+  @@index([userId, period])
+}
+
+enum BudgetPeriod {
+  DAILY
+  WEEKLY
+  MONTHLY
+}
+
+// ----------------------------------------------------------
+// REPORT (generated report metadata / cache)
+// ----------------------------------------------------------
+model Report {
+  id        Int        @id @default(autoincrement())
+  userId    Int
+  type      ReportType
+  periodStart DateTime
+  periodEnd   DateTime
+  filePath  String?
+  format    ReportFormat @default(PDF)
+  createdAt DateTime   @default(now())
+
+  @@index([userId, type])
+}
+
+enum ReportType {
+  DAILY
+  WEEKLY
+  MONTHLY
+  QUARTERLY
+  YEARLY
+  BUDGET
+  INCOME
+  EXPENSE
+  CATEGORY
+}
+
+enum ReportFormat {
+  PDF
+  EXCEL
+  CSV
+}
+
+// ----------------------------------------------------------
+// NOTIFICATION
+// ----------------------------------------------------------
+model Notification {
+  id        Int              @id @default(autoincrement())
+  userId    Int
+  title     String           @db.VarChar(150)
+  message   String           @db.Text
+  type      NotificationType
+  isRead    Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+}
+
+enum NotificationType {
+  DAILY_REMINDER
+  BUDGET_EXCEEDED
+  WEEKLY_REPORT
+  MONTHLY_REPORT
+  SAVINGS_REMINDER
+  BILL_DUE
+}
+
+// ----------------------------------------------------------
+// SETTINGS
+// ----------------------------------------------------------
+model Settings {
+  id                    Int     @id @default(autoincrement())
+  userId                Int     @unique
+  notificationsEnabled  Boolean @default(true)
+  dailyReminderTime     String? @db.VarChar(5) // "HH:MM"
+  deviceToken           String? @db.VarChar(255) // FCM push token
+  updatedAt             DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
